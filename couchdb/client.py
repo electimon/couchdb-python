@@ -1144,6 +1144,23 @@ class Database(object):
         else:
             _, _, data = self.resource.get_json('_changes', **opts)
         return data
+    
+    def search(self, name, wrapper=None, **options):
+        """Execute a predefined search query based on index.
+
+        :param name: the name of the index; for custom views, use the format
+                     ``design_docid/indexname``, that is, the document ID of the
+                     design document and the name of the index, separated by a
+                     slash
+        :param wrapper: an optional callable that should be used to wrap the
+                        result rows
+        :param options: optional query string parameters
+        :return: the view results
+        :rtype: `ViewResults`
+        """
+        path = _path_from_name(name, '_search')
+        return PermanentView(self.resource(*path), '/'.join(path),
+                             wrapper=wrapper)(**options)
 
 
 def _doc_resource(base, doc_id):
