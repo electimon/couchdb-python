@@ -1288,7 +1288,7 @@ def _encode_view_options(options):
     """
     retval = {}
     for name, value in options.items():
-        if name in ('key', 'startkey', 'endkey', 'query', 'q') \
+        if name in ('key', 'startkey', 'endkey') \
                 or not isinstance(value, util.strbase):
             value = json.encode(value)
         retval[name] = value
