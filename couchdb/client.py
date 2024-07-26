@@ -1471,6 +1471,9 @@ class Row(dict):
         if doc:
             return Document(doc)
 
+    @property
+    def fields(self):
+        return self.get('fields')
 
 class Indexes(object):
     """Manage indexes in CouchDB 2.0.0 and later.
