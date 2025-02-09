@@ -141,7 +141,8 @@ class Server(object):
         :rtype: `Database`
         :raise ResourceNotFound: if no database with that name exists
         """
-        db = Database(self.resource(name), name)
+        uses_nouveau = self.config().get('nouveau', {}).get('enable', False)
+        db = Database(self.resource(name), name, uses_nouveau=uses_nouveau)
         db.resource.head() # actually make a request to the database
         return db
 
@@ -154,7 +155,7 @@ class Server(object):
 
         :rtype: `dict`
         """
-        status, headers, data = self.resource.get_json('_config')
+        status, headers, data = self.resource('_node', '_local').get_json('_config')
         return data
 
     def version(self):
@@ -371,7 +372,7 @@ class Database(object):
     >>> db.resource.session.disable_ssl_verification()
     """
 
-    def __init__(self, url, name=None, session=None):
+    def __init__(self, url, name=None, session=None, uses_nouveau=False):
         if isinstance(url, util.strbase):
             if not url.startswith('http'):
                 url = DEFAULT_BASE_URL + url
@@ -379,6 +380,7 @@ class Database(object):
         else:
             self.resource = url
         self._name = name
+        self.uses_nouveau = uses_nouveau
 
     def __repr__(self):
         return '<%s %r>' % (type(self).__name__, self.name)
@@ -1158,10 +1160,12 @@ class Database(object):
         :return: the view results
         :rtype: `ViewResults`
         """
-        path = _path_from_name(name, '_search')
+        if self.uses_nouveau:
+            path = _path_from_name(name, '_nouveau')
+        else:
+            path = _path_from_name(name, '_search')
         return PermanentView(self.resource(*path), '/'.join(path),
-                             wrapper=wrapper)(**options)
-
+                             wrapper=wrapper, uses_nouveau=self.uses_nouveau)(**options)
 
 def _doc_resource(base, doc_id):
     """Return the resource for the given document id.
@@ -1216,12 +1220,13 @@ class Document(dict):
 class View(object):
     """Abstract representation of a view or query."""
 
-    def __init__(self, url, wrapper=None, session=None):
+    def __init__(self, url, wrapper=None, session=None, uses_nouveau=False):
         if isinstance(url, util.strbase):
             self.resource = http.Resource(url, session)
         else:
             self.resource = url
         self.wrapper = wrapper
+        self.uses_nouveau = uses_nouveau
 
     def __call__(self, **options):
         return ViewResults(self, options)
@@ -1236,8 +1241,8 @@ class View(object):
 class PermanentView(View):
     """Representation of a permanent view on the server."""
 
-    def __init__(self, uri, name, wrapper=None, session=None):
-        View.__init__(self, uri, wrapper=wrapper, session=session)
+    def __init__(self, uri, name, wrapper=None, session=None, uses_nouveau=False):
+        View.__init__(self, uri, wrapper=wrapper, session=session, uses_nouveau=uses_nouveau)
         self.name = name
 
     def __repr__(self):
@@ -1252,8 +1257,8 @@ class TemporaryView(View):
     """Representation of a temporary view."""
 
     def __init__(self, uri, map_fun, reduce_fun=None,
-                 language='javascript', wrapper=None, session=None):
-        View.__init__(self, uri, wrapper=wrapper, session=session)
+                 language='javascript', wrapper=None, session=None, uses_nouveau=False):
+        View.__init__(self, uri, wrapper=wrapper, session=session, uses_nouveau=uses_nouveau)
         if isinstance(map_fun, FunctionType):
             map_fun = getsource(map_fun).rstrip('\n\r')
         self.map_fun = dedent(map_fun.lstrip('\n\r'))
@@ -1380,8 +1385,12 @@ class ViewResults(object):
     def _fetch(self):
         data = self.view._exec(self.options)
         wrapper = self.view.wrapper or Row
-        self._rows = [wrapper(row) for row in data['rows']]
-        self._total_rows = data.get('total_rows')
+        if self.view.uses_nouveau:
+            self._rows = [wrapper(row) for row in data['hits']]
+            self._total_rows = data.get('total_hits')
+        else:
+            self._rows = [wrapper(row) for row in data['rows']]
+            self._total_rows = data.get('total_rows')
         self._offset = data.get('offset', 0)
         self._update_seq = data.get('update_seq')
 
